@@ -13,11 +13,6 @@ bin/
 # Scripts
 scripts/
 
-# Simulation outputs and temporary results
-results/
-*.txt
-*.patch
-
 # LaTeX build artifacts and sources
 *.aux
 *.log
