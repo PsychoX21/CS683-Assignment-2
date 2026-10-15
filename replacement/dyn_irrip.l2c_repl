@@ -5,7 +5,7 @@
 #define LEADER_SET_STRIDE  (L2C_SET / NUM_LEADER_SETS)
 
 #ifndef DYN_THRESHOLD
-#define DYN_THRESHOLD 0.25
+#define DYN_THRESHOLD 0.20
 #endif
 
 uint32_t l2_rrpv[L2C_SET][L2C_WAY];
