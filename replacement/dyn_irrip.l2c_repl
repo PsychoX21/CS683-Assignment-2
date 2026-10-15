@@ -17,6 +17,7 @@ uint64_t leader_total_miss = 0;
 
 bool irrip_active = false;
 
+// Bitwise set dueling: selects 32 evenly dispersed leader sets (3.125% of cache) that always run SRRIP.
 bool is_leader_set(uint32_t set) {
     return (set % LEADER_SET_STRIDE == 0);
 }
@@ -35,6 +36,7 @@ void CACHE::l2c_initialize_replacement()
     leader_total_miss = 0;
 }
 
+// Prefetch-aware victim selection: evicts dead prefetches first, then dead data lines (if in I-RRIP mode).
 uint32_t CACHE::l2c_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
 {
     for (int i = 0; i < L2C_WAY; i++) {
@@ -69,6 +71,7 @@ uint32_t CACHE::l2c_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, c
     return 0;
 }
 
+// Updates runtime access/miss statistics in leader sets and dynamically toggles I-RRIP for follower sets.
 void CACHE::l2c_update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit, uint8_t isInstruction)
 {
 

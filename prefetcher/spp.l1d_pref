@@ -64,6 +64,7 @@ static uint64_t non_uniform_pref_issued = 0;
 static uint64_t epoch_pref_issued       = 0;
 static uint64_t epoch_pref_useful       = 0;
 
+// Encodes a signed stride into a 7-bit representation (1 sign bit + 6 magnitude bits, [-63, 63]).
 static inline uint32_t encode_stride(int64_t s)
 {
     uint32_t sign  = (s < 0) ? 0x40 : 0x00;
@@ -72,11 +73,13 @@ static inline uint32_t encode_stride(int64_t s)
     return sign | mag;
 }
 
+// Hashes the 64-bit load PC into a 16-bit tag to avoid aliasing in the 64-entry IP tracker table.
 static inline uint64_t hash_ip(uint64_t raw_ip)
 {
     return ((raw_ip >> 2) ^ (raw_ip >> 8)) & MASK_IP;
 }
 
+// Checks if a candidate cache line was recently prefetched and already tracked in the filter.
 static bool is_in_filter(uint64_t pf_cl)
 {
     uint32_t set = pf_cl % FILTER_SETS;
@@ -87,6 +90,7 @@ static bool is_in_filter(uint64_t pf_cl)
     return false;
 }
 
+// Records an issued prefetch into the 4-way associative filter (256 entries) with LRU replacement.
 static void record_filter(uint64_t pf_cl)
 {
     uint32_t set = pf_cl % FILTER_SETS;
@@ -125,6 +129,7 @@ static void record_filter(uint64_t pf_cl)
     pref_filter[set].lru[way]     = 0;
 }
 
+// On a demand hit, asserts useful bit to credit accuracy once and prevent duplicate counting.
 static void check_filter(uint64_t cl_addr)
 {
     uint32_t set = cl_addr % FILTER_SETS;
@@ -145,6 +150,7 @@ static void check_filter(uint64_t cl_addr)
     }
 }
 
+// Computes current epoch prefetch accuracy with periodic halving every 4096 issued prefetches.
 static double get_accuracy()
 {
     if (epoch_pref_issued == 0)
@@ -152,6 +158,7 @@ static double get_accuracy()
     return (double)epoch_pref_useful / (double)epoch_pref_issued;
 }
 
+// Throttles prefetch degree (1 to 4) based on runtime accuracy thresholds to limit cache pollution.
 static uint32_t get_degree(double accuracy)
 {
     if (SPP_T_HIGH <= 0.0) return 4;
@@ -164,6 +171,7 @@ static uint32_t get_degree(double accuracy)
     return 1;
 }
 
+// Verifies filter presence and MSHR fill level (L1 vs L2) before issuing prefetch to lower level.
 static bool issue_single_prefetch(CACHE* cache, uint64_t ip, uint64_t addr, uint64_t pf_address)
 {
     uint64_t pf_cl = pf_address >> LOG2_BLOCK_SIZE;
@@ -191,6 +199,7 @@ static bool issue_single_prefetch(CACHE* cache, uint64_t ip, uint64_t addr, uint
     return false;
 }
 
+// Issues lookahead prefetches along a constant-stride stream bounded by 4KB physical page limits.
 static void issue_uniform_prefetch(CACHE* cache, uint64_t ip, uint64_t addr,
                                    uint64_t cl_addr, int64_t stride, uint32_t degree)
 {
@@ -205,6 +214,7 @@ static void issue_uniform_prefetch(CACHE* cache, uint64_t ip, uint64_t addr,
     }
 }
 
+// Performs multi-stride speculative lookahead chaining across learned pattern transitions.
 static void issue_non_uniform_prefetch(CACHE* cache, uint64_t ip, uint64_t addr,
                                        uint64_t cl_addr, const IP_TRACKER& tracker,
                                        uint32_t degree)
@@ -360,6 +370,7 @@ void CACHE::l1d_prefetcher_operate(uint64_t addr, uint64_t ip,
     trackers[index].lru = 0;
 }
 
+// Invalidates prefetch filter entries upon L1D cache eviction to avoid stale filter hits.
 void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
                                       uint32_t set, uint32_t way,
                                       uint8_t prefetch,

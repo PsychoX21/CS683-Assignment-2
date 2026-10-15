@@ -13,6 +13,7 @@ void CACHE::l2c_initialize_replacement()
     }
 }
 
+// Prioritizes dead data lines (instruction == 0) at maxRRPV=3 before evicting reused instruction lines.
 uint32_t CACHE::l2c_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, const BLOCK *current_set, uint64_t ip, uint64_t full_addr, uint32_t type)
 {
     for (int i = 0; i < L2C_WAY; i++) {
@@ -38,6 +39,7 @@ uint32_t CACHE::l2c_find_victim(uint32_t cpu, uint64_t instr_id, uint32_t set, c
     return 0;
 }
 
+// Asymmetric RRPV updates: instructions insert at RRPV=1 / hit to 0; data lines insert at 2 / hit to 1.
 void CACHE::l2c_update_replacement_state(uint32_t cpu, uint32_t set, uint32_t way, uint64_t full_addr, uint64_t ip, uint64_t victim_addr, uint32_t type, uint8_t hit, uint8_t isInstruction)
 {
     if (hit) {
