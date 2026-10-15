@@ -12,6 +12,18 @@
 #define FILTER_SETS          64
 #define FILTER_WAYS          4
 
+#ifndef SPP_T_HIGH
+#define SPP_T_HIGH 0.40
+#endif
+
+#ifndef SPP_T_MID
+#define SPP_T_MID 0.30
+#endif
+
+#ifndef SPP_T_LOW
+#define SPP_T_LOW 0.15
+#endif
+
 struct IP_TRACKER {
     uint64_t ip;
     uint64_t last_cl_addr;
@@ -36,6 +48,7 @@ struct PATTERN_ENTRY {
 struct FILTER_SET {
     uint64_t cl_addr[FILTER_WAYS];
     bool     valid[FILTER_WAYS];
+    bool     useful[FILTER_WAYS];
     uint8_t  lru[FILTER_WAYS];
 };
 
@@ -108,6 +121,7 @@ static void record_filter(uint64_t pf_cl)
     }
     pref_filter[set].cl_addr[way] = pf_cl;
     pref_filter[set].valid[way]   = true;
+    pref_filter[set].useful[way]  = false;
     pref_filter[set].lru[way]     = 0;
 }
 
@@ -116,9 +130,16 @@ static void check_filter(uint64_t cl_addr)
     uint32_t set = cl_addr % FILTER_SETS;
     for (int w = 0; w < FILTER_WAYS; w++) {
         if (pref_filter[set].valid[w] && pref_filter[set].cl_addr[w] == cl_addr) {
-            total_pref_useful++;
-            epoch_pref_useful++;
-            pref_filter[set].valid[w] = false;
+            if (!pref_filter[set].useful[w]) {
+                total_pref_useful++;
+                epoch_pref_useful++;
+                pref_filter[set].useful[w] = true;
+            }
+            for (int i = 0; i < FILTER_WAYS; i++) {
+                if (pref_filter[set].lru[i] < pref_filter[set].lru[w])
+                    pref_filter[set].lru[i]++;
+            }
+            pref_filter[set].lru[w] = 0;
             return;
         }
     }
@@ -133,10 +154,13 @@ static double get_accuracy()
 
 static uint32_t get_degree(double accuracy)
 {
+    if (SPP_T_HIGH <= 0.0) return 4;
+    if (SPP_T_HIGH >= 10.0) return 1;
+
     if (epoch_pref_issued < 200) return 3;
-    if (accuracy >= 0.40) return 4;
-    if (accuracy >= 0.30) return 3;
-    if (accuracy >= 0.15) return 2;
+    if (accuracy >= SPP_T_HIGH) return 4;
+    if (accuracy >= SPP_T_MID)  return 3;
+    if (accuracy >= SPP_T_LOW)  return 2;
     return 1;
 }
 
@@ -230,6 +254,7 @@ void CACHE::l1d_prefetcher_initialize()
         for (int w = 0; w < FILTER_WAYS; w++) {
             pref_filter[s].cl_addr[w] = 0;
             pref_filter[s].valid[w]   = false;
+            pref_filter[s].useful[w]  = false;
             pref_filter[s].lru[w]     = w;
         }
     }
@@ -342,7 +367,17 @@ void CACHE::l1d_prefetcher_cache_fill(uint64_t v_addr, uint64_t addr,
                                       uint64_t evicted_addr,
                                       uint32_t metadata_in)
 {
-    return;
+    if (evicted_addr != 0) {
+        uint64_t evicted_cl = evicted_addr >> LOG2_BLOCK_SIZE;
+        uint32_t f_set = evicted_cl % FILTER_SETS;
+        for (int w = 0; w < FILTER_WAYS; w++) {
+            if (pref_filter[f_set].valid[w] && pref_filter[f_set].cl_addr[w] == evicted_cl) {
+                pref_filter[f_set].valid[w]  = false;
+                pref_filter[f_set].useful[w] = false;
+                break;
+            }
+        }
+    }
 }
 
 void CACHE::l1d_prefetcher_final_stats()
